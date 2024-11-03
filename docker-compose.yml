@@ -1,0 +1,9 @@
+version: "3"
+services:
+  phonepe-admin-fe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dhavalpatel262/phonepe-admin-fe:latest
+
+    

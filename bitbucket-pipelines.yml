@@ -1,0 +1,64 @@
+image: node:18
+
+definitions:
+  steps:
+    - step: &sonarqube-analysis
+        name: SonarQube analysis
+        image: sonarsource/sonar-scanner-cli:latest
+        script:
+          - sonar-scanner 
+              -Dsonar.projectKey=phonepe-admin-fe 
+              -Dsonar.sources=. 
+              -Dsonar.host.url=$SONAR_HOST_URL 
+              -Dsonar.login=$SONAR_TOKEN
+  services:
+    docker:
+      memory: 8000
+
+pipelines:
+
+  branches:
+    '{master,sprint-*,release*}':
+      - step:
+          name: Build and Push Docker image
+          services:
+            - docker
+          size: 4x
+          script:
+            - export IMAGE_NAME=$DOCKER_USERNAME/phonepe-admin-fe
+            - export BUILD_NUMBER=${BITBUCKET_BUILD_NUMBER}
+            - |
+              if [ "$BITBUCKET_BRANCH" = "master" ]; then
+                export TAG="uat"
+              elif [[ "$BITBUCKET_BRANCH" == sprint-* ]]; then
+                export TAG="dev"
+              elif [[ "$BITBUCKET_BRANCH" == release* ]]; then
+                export TAG="prod"
+              fi
+            - time docker build 
+                --build-arg NODE_OPTIONS="--max-old-space-size=16384" 
+                --build-arg NODE_ENV=production 
+                --memory=16g 
+                --memory-swap=16g 
+                --progress=plain
+                --no-cache
+                -t $IMAGE_NAME:$BUILD_NUMBER .
+            - docker tag $IMAGE_NAME:$BUILD_NUMBER $IMAGE_NAME:$TAG
+            - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+            - docker push $IMAGE_NAME:$BUILD_NUMBER
+            - docker push $IMAGE_NAME:$TAG
+          max-time: 20
+
+  pull-requests:
+    '**':
+      - step:
+          name: SonarQube Pull Request analysis
+          script:
+            - sonar-scanner -X
+                -Dsonar.projectKey=phonepe-employee-fe
+                -Dsonar.sources=. 
+                -Dsonar.host.url=$SONAR_HOST_URL 
+                -Dsonar.login=$SONAR_TOKEN
+                -Dsonar.pullrequest.key=$BITBUCKET_PR_ID
+                -Dsonar.pullrequest.branch=$BITBUCKET_BRANCH
+                -Dsonar.pullrequest.base=$BITBUCKET_PR_DESTINATION_BRANCH
